@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-import { findActiveShare } from "@/lib/share"
+import { recordShareVisit } from "@/lib/share"
 
 function fileSize(size: bigint) {
   const bytes = Number(size)
@@ -10,7 +10,7 @@ function fileSize(size: bigint) {
 
 export default async function SharePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const share = await findActiveShare(token)
+  const share = await recordShareVisit(token)
 
   if (!share) {
     return (

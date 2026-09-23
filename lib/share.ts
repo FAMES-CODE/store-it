@@ -48,3 +48,15 @@ export async function findActiveShare(token: string) {
   if (!share || isShareExpired(share.expiresAt)) return null
   return share
 }
+
+export async function recordShareVisit(token: string) {
+  const share = await findActiveShare(token)
+  if (!share) return null
+
+  await db.shareLink.update({
+    where: { id: share.id },
+    data: { clickCount: { increment: 1 } },
+  })
+
+  return share
+}

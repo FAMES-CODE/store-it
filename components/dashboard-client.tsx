@@ -1,6 +1,7 @@
 "use client"
 
 import { FormEvent, useMemo, useRef, useState } from "react"
+import Link from "next/link"
 import { signOut } from "next-auth/react"
 import { useTheme } from "next-themes"
 import {
@@ -253,14 +254,10 @@ export function DashboardClient({
             <HardDrive className="size-4" />
             All files
           </button>
-          <span className="flex items-center gap-3 px-3 py-2.5 text-sm text-muted-foreground">
-            <File className="size-4" />
-            Recent
-          </span>
-          <span className="flex items-center gap-3 px-3 py-2.5 text-sm text-muted-foreground">
+          <Link href="/Shared" className="flex items-center gap-3 px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground">
             <Share2 className="size-4" />
             Shared
-          </span>
+          </Link>
         </nav>
         <div className="mt-auto space-y-4">
           <section className="rounded-xl bg-muted p-3">
