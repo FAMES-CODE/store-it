@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 
 import { safeAuth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { StorageQuotaExceededError } from "@/lib/quota"
 import { removeUpload, saveUpload } from "@/lib/storage"
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -50,26 +51,41 @@ export async function POST(request: Request) {
 
   const storageKey = randomUUID()
   await saveUpload(storageKey, await upload.arrayBuffer())
+  const uploadSize = BigInt(upload.size)
 
   try {
     const file = await db.$transaction(async (tx) => {
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { storageUsed: true, storageQuota: true },
+      })
+
+      if (user.storageUsed + uploadSize > user.storageQuota) {
+        throw new StorageQuotaExceededError()
+      }
+
+      // The serializable transaction prevents concurrent uploads from overshooting the quota.
+      await tx.user.update({ where: { id: userId }, data: { storageUsed: { increment: uploadSize } } })
+
       const createdFile = await tx.file.create({
         data: {
           name: upload.name,
           originalName: upload.name,
           mimeType: upload.type || "application/octet-stream",
-          size: BigInt(upload.size),
+          size: uploadSize,
           storageKey,
           userId,
           folderId: typeof folderId === "string" && folderId ? folderId : null,
         },
       })
-      await tx.user.update({ where: { id: userId }, data: { storageUsed: { increment: BigInt(upload.size) } } })
       return createdFile
-    })
+    }, { isolationLevel: "Serializable" })
     return NextResponse.json({ file: { ...file, size: file.size.toString() } }, { status: 201 })
   } catch (error) {
     await removeUpload(storageKey)
+    if (error instanceof StorageQuotaExceededError) {
+      return NextResponse.json({ error: error.message }, { status: 413 })
+    }
     throw error
   }
 }

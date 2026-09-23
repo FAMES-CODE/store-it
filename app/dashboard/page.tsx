@@ -8,7 +8,11 @@ export default async function DashboardPage() {
   const session = await safeAuth()
   if (!session?.user?.id) redirect("/login")
 
-  const [folders, files] = await Promise.all([
+  const [user, folders, files] = await Promise.all([
+    db.user.findUniqueOrThrow({
+      where: { id: session.user.id },
+      select: { storageUsed: true, storageQuota: true },
+    }),
     db.folder.findMany({
       where: { userId: session.user.id, parentId: null },
       orderBy: { name: "asc" },
@@ -30,6 +34,8 @@ export default async function DashboardPage() {
   return (
     <DashboardClient
       name={session.user.name ?? "User"}
+      storageUsed={user.storageUsed.toString()}
+      storageQuota={user.storageQuota.toString()}
       folders={folders}
       files={files.map((file) => ({
         ...file,

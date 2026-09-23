@@ -18,7 +18,8 @@ model User {
   email        String  @unique
   passwordHash String
 
-  storageUsed BigInt @default(0)
+  storageUsed  BigInt @default(0)
+  storageQuota BigInt @default(5368709120)
 
   files   File[]
   folders Folder[]

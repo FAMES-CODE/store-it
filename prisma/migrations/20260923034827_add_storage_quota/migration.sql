@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "storageQuota" BIGINT NOT NULL DEFAULT 5368709120;

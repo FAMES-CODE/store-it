@@ -8,7 +8,13 @@ type FolderItem = { id: string; name: string; parentId: string | null }
 type FileItem = { id: string; name: string; mimeType: string; size: string; createdAt: string }
 type ShareDuration = "1h" | "6h" | "1d" | "7d" | "30d"
 
-type DashboardClientProps = { name: string; folders: FolderItem[]; files: FileItem[] }
+type DashboardClientProps = {
+  name: string
+  folders: FolderItem[]
+  files: FileItem[]
+  storageUsed: string
+  storageQuota: string
+}
 
 const shareDurations: { value: ShareDuration; label: string }[] = [
   { value: "1h", label: "1 hour" },
@@ -20,13 +26,15 @@ const shareDurations: { value: ShareDuration; label: string }[] = [
 
 const fileSize = (size: string) => {
   const bytes = Number(size)
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} Ko`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-export function DashboardClient({ name, folders: initialFolders, files: initialFiles }: DashboardClientProps) {
+export function DashboardClient({ name, folders: initialFolders, files: initialFiles, storageUsed: initialStorageUsed, storageQuota }: DashboardClientProps) {
   const [folders, setFolders] = useState(initialFolders)
   const [files, setFiles] = useState(initialFiles)
+  const [storageUsed, setStorageUsed] = useState(initialStorageUsed)
   const [currentFolder, setCurrentFolder] = useState<FolderItem | null>(null)
   const [notice, setNotice] = useState("")
   const [busy, setBusy] = useState(false)
@@ -69,6 +77,7 @@ export function DashboardClient({ name, folders: initialFolders, files: initialF
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error)
       formElement.reset(); await refresh(); setNotice("File uploaded.")
+      setStorageUsed((used) => (BigInt(used) + BigInt(selectedFile.size)).toString())
     } catch (error) { setNotice(error instanceof Error ? error.message : "Something went wrong.") } finally { setBusy(false) }
   }
 
@@ -88,7 +97,7 @@ export function DashboardClient({ name, folders: initialFolders, files: initialF
   async function deleteFile(file: FileItem) {
     if (!confirm(`Delete “${file.name}”?`)) return
     setBusy(true); setNotice("")
-    try { const response = await fetch(`/api/files?id=${file.id}`, { method: "DELETE" }); const data = await response.json(); if (!response.ok) throw new Error(data.error); await refresh(); setNotice("File deleted.") } catch (error) { setNotice(error instanceof Error ? error.message : "Something went wrong.") } finally { setBusy(false) }
+    try { const response = await fetch(`/api/files?id=${file.id}`, { method: "DELETE" }); const data = await response.json(); if (!response.ok) throw new Error(data.error); await refresh(); setStorageUsed((used) => (BigInt(used) - BigInt(file.size)).toString()); setNotice("File deleted.") } catch (error) { setNotice(error instanceof Error ? error.message : "Something went wrong.") } finally { setBusy(false) }
   }
 
   function openShareDialog(file: FileItem) {
@@ -140,6 +149,10 @@ export function DashboardClient({ name, folders: initialFolders, files: initialF
       <header className="border-b bg-background"><div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"><div><p className="text-lg font-semibold">Store it</p><p className="text-sm text-muted-foreground">Hello, {name}</p></div><button onClick={() => signOut({ callbackUrl: "/login" })} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><LogOut className="size-4" /> Sign out</button></div></header>
       <div className="mx-auto max-w-6xl p-6">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl font-semibold">My files</h1><p className="mt-1 text-sm text-muted-foreground">{currentFolder ? `Folder: ${currentFolder.name}` : "Your personal storage"}</p></div>{currentFolder && <button onClick={() => openFolder(null)} className="rounded-md border px-3 py-2 text-sm hover:bg-muted">← Root</button>}</div>
+        <section className="mb-6 rounded-xl border bg-card p-4" aria-label="Storage usage">
+          <div className="flex items-center justify-between gap-4 text-sm"><span className="font-medium">Storage</span><span className="text-muted-foreground">{fileSize(storageUsed)} of {fileSize(storageQuota)} used</span></div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${Math.min(100, (Number(storageUsed) / Number(storageQuota)) * 100)}%` }} /></div>
+        </section>
         <div className="mb-6 grid gap-3 rounded-xl border bg-card p-4 md:grid-cols-2"><form onSubmit={createFolder} className="flex gap-2"><input name="name" required maxLength={120} placeholder="New folder name" className="h-10 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm" /><button disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50"><FolderPlus className="size-4" /> Create</button></form><form onSubmit={uploadFile} className="flex gap-2"><input ref={fileInput} required type="file" className="min-w-0 flex-1 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2" /><button disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"><Upload className="size-4" /> Upload</button></form></div>
         {notice && <p role="status" className="mb-4 rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
         <section className="overflow-hidden rounded-xl border bg-card"><div className="grid grid-cols-[1fr_auto] border-b px-5 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground"><span>Name</span><span>Actions</span></div>
