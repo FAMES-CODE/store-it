@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 
 import { NextResponse } from "next/server"
+import { z } from "zod"
 
 import { safeAuth } from "@/lib/auth"
 import { db } from "@/lib/db"
@@ -8,6 +9,10 @@ import { StorageQuotaExceededError } from "@/lib/quota"
 import { removeUpload, saveUpload } from "@/lib/storage"
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
+const fileUpdateSchema = z.object({
+  id: z.string().cuid(),
+  name: z.string().trim().min(1, "File name is required.").max(255),
+})
 
 async function currentUserId() {
   const session = await safeAuth()
@@ -105,5 +110,20 @@ export async function DELETE(request: Request) {
     db.user.update({ where: { id: userId }, data: { storageUsed: { decrement: file.size } } }),
   ])
   await removeUpload(file.storageKey)
+  return NextResponse.json({ ok: true })
+}
+
+export async function PATCH(request: Request) {
+  const userId = await currentUserId()
+  if (!userId) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+
+  const parsed = fileUpdateSchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid details." }, { status: 400 })
+
+  const result = await db.file.updateMany({
+    where: { id: parsed.data.id, userId },
+    data: { name: parsed.data.name },
+  })
+  if (!result.count) return NextResponse.json({ error: "File not found." }, { status: 404 })
   return NextResponse.json({ ok: true })
 }
