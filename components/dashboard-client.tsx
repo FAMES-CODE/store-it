@@ -103,7 +103,8 @@ export function DashboardClient({
     [sharing, setSharing] = useState<FileItem | null>(null)
   const [previewing, setPreviewing] = useState<FileItem | null>(null)
   const [shareDuration, setShareDuration] = useState<ShareDuration>("1d"),
-    [shareUrl, setShareUrl] = useState("")
+    [shareUrl, setShareUrl] = useState(""),
+    [shareError, setShareError] = useState("")
   const fileInput = useRef<HTMLInputElement>(null)
   const matchingFolders = useMemo(
     () =>
@@ -225,19 +226,27 @@ export function DashboardClient({
       setNotice(`${deleting.kind === "folder" ? "Folder" : "File"} deleted.`)
     })
   }
-  async function share(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function createShareLink() {
     if (!sharing) return
-    await run(async () => {
+    setBusy(true)
+    setShareError("")
+    try {
       const r = await fetch(`/api/files/${sharing.id}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expiresIn: shareDuration }),
       })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error)
+      const d = await r.json().catch(() => null)
+      if (!r.ok) throw new Error(d?.error || "Unable to create the share link.")
+      if (!d?.path) throw new Error("The share link could not be created.")
       setShareUrl(`${window.location.origin}${d.path}`)
-    })
+    } catch (error) {
+      setShareError(
+        error instanceof Error ? error.message : "Something went wrong."
+      )
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -258,7 +267,10 @@ export function DashboardClient({
             <HardDrive className="size-4" />
             All files
           </button>
-          <Link href="/Shared" className="flex items-center gap-3 px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground">
+          <Link
+            href="/Shared"
+            className="flex items-center gap-3 px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground"
+          >
             <Share2 className="size-4" />
             Shared
           </Link>
@@ -497,13 +509,21 @@ export function DashboardClient({
                       onClick={() => {
                         setSharing(file)
                         setShareUrl("")
+                        setShareError("")
+                        setShareDuration("1d")
                       }}
                       className="rounded p-2 hover:bg-muted"
                       aria-label={`Share ${file.name}`}
                     >
                       <Share2 className="size-4" />
                     </button>
-                    <button onClick={() => setPreviewing(file)} className="rounded p-2 hover:bg-muted" aria-label={`Preview ${file.name}`}><Eye className="size-4" /></button>
+                    <button
+                      onClick={() => setPreviewing(file)}
+                      className="rounded p-2 hover:bg-muted"
+                      aria-label={`Preview ${file.name}`}
+                    >
+                      <Eye className="size-4" />
+                    </button>
                     <button
                       onClick={() => setRename({ kind: "file", item: file })}
                       className="rounded p-2 hover:bg-muted"
@@ -559,8 +579,63 @@ export function DashboardClient({
           </form>
         </DialogContent>
       </Dialog>
-      <Dialog open={Boolean(previewing)} onOpenChange={(open) => !open && setPreviewing(null)}>
-        {previewing && <DialogContent className="max-w-4xl p-0"><DialogHeader className="border-b px-6 py-5"><DialogTitle className="truncate text-lg font-semibold">{previewing.name}</DialogTitle><DialogDescription className="text-sm text-muted-foreground">Native browser preview · {size(previewing.size)}</DialogDescription></DialogHeader><div className="min-h-96 bg-muted/30 p-4">{previewKind(previewing.name, previewing.mimeType) === "image" ? <img src={`/api/files/${previewing.id}/content`} alt={previewing.name} className="mx-auto max-h-[65vh] max-w-full rounded-md object-contain" /> : previewKind(previewing.name, previewing.mimeType) === "audio" ? <audio controls className="mt-24 w-full" src={`/api/files/${previewing.id}/content`} /> : previewKind(previewing.name, previewing.mimeType) === "video" ? <video controls className="mx-auto max-h-[65vh] max-w-full rounded-md" src={`/api/files/${previewing.id}/content`} /> : <iframe title={`Preview of ${previewing.name}`} src={`/api/files/${previewing.id}/content`} sandbox="" className="h-[65vh] w-full rounded-md border bg-background" />}</div><DialogFooter className="m-0 border-t px-6 py-4"><a href={`/api/files/${previewing.id}/download`} className="mr-auto text-sm text-primary hover:underline">Download original</a><DialogClose className="h-9 rounded-md border px-4 text-sm hover:bg-muted">Close</DialogClose></DialogFooter></DialogContent>}
+      <Dialog
+        open={Boolean(previewing)}
+        onOpenChange={(open) => !open && setPreviewing(null)}
+      >
+        {previewing && (
+          <DialogContent className="max-w-4xl p-0">
+            <DialogHeader className="border-b px-6 py-5">
+              <DialogTitle className="truncate text-lg font-semibold">
+                {previewing.name}
+              </DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
+                Native browser preview · {size(previewing.size)}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="min-h-96 bg-muted/30 p-4">
+              {previewKind(previewing.name, previewing.mimeType) === "image" ? (
+                <img
+                  src={`/api/files/${previewing.id}/content`}
+                  alt={previewing.name}
+                  className="mx-auto max-h-[65vh] max-w-full rounded-md object-contain"
+                />
+              ) : previewKind(previewing.name, previewing.mimeType) ===
+                "audio" ? (
+                <audio
+                  controls
+                  className="mt-24 w-full"
+                  src={`/api/files/${previewing.id}/content`}
+                />
+              ) : previewKind(previewing.name, previewing.mimeType) ===
+                "video" ? (
+                <video
+                  controls
+                  className="mx-auto max-h-[65vh] max-w-full rounded-md"
+                  src={`/api/files/${previewing.id}/content`}
+                />
+              ) : (
+                <iframe
+                  title={`Preview of ${previewing.name}`}
+                  src={`/api/files/${previewing.id}/content`}
+                  sandbox=""
+                  className="h-[65vh] w-full rounded-md border bg-background"
+                />
+              )}
+            </div>
+            <DialogFooter className="m-0 border-t px-6 py-4">
+              <a
+                href={`/api/files/${previewing.id}/download`}
+                className="mr-auto text-sm text-primary hover:underline"
+              >
+                Download original
+              </a>
+              <DialogClose className="h-9 rounded-md border px-4 text-sm hover:bg-muted">
+                Close
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        )}
       </Dialog>
       <Dialog
         open={Boolean(rename)}
@@ -631,7 +706,13 @@ export function DashboardClient({
       </Dialog>
       <Dialog
         open={Boolean(sharing)}
-        onOpenChange={(open) => !open && setSharing(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSharing(null)
+            setShareUrl("")
+            setShareError("")
+          }
+        }}
       >
         {sharing && (
           <DialogContent>
@@ -654,7 +735,6 @@ export function DashboardClient({
                       className="h-10 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm font-normal"
                     />
                     <Button
-                      type="button"
                       variant="outline"
                       onClick={() => {
                         void navigator.clipboard.writeText(shareUrl)
@@ -672,7 +752,7 @@ export function DashboardClient({
                 </DialogFooter>
               </div>
             ) : (
-              <form onSubmit={share}>
+              <div>
                 <label className="mt-5 grid gap-2 text-sm font-medium">
                   Link expires after
                   <select
@@ -689,13 +769,23 @@ export function DashboardClient({
                     ))}
                   </select>
                 </label>
+                {shareError && (
+                  <p role="alert" className="mt-3 text-sm text-destructive">
+                    {shareError}
+                  </p>
+                )}
                 <DialogFooter>
                   <DialogClose className="h-9 rounded-md border px-4 text-sm hover:bg-muted">
                     Cancel
                   </DialogClose>
-                  <Button disabled={busy}>Create link</Button>
+                  <Button
+                    disabled={busy}
+                    onClick={() => void createShareLink()}
+                  >
+                    {busy ? "Creating…" : "Create link"}
+                  </Button>
                 </DialogFooter>
-              </form>
+              </div>
             )}
           </DialogContent>
         )}
