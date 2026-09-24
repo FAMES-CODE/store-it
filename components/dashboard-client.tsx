@@ -1,11 +1,14 @@
 "use client"
+/* eslint-disable @next/next/no-img-element */
 
 import { FormEvent, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/components/theme-provider"
+import { previewKind } from "@/lib/media"
 import {
   Cloud,
+  Eye,
   File,
   FileArchive,
   FileImage,
@@ -98,6 +101,7 @@ export function DashboardClient({
     [rename, setRename] = useState<Target | null>(null),
     [deleting, setDeleting] = useState<Target | null>(null),
     [sharing, setSharing] = useState<FileItem | null>(null)
+  const [previewing, setPreviewing] = useState<FileItem | null>(null)
   const [shareDuration, setShareDuration] = useState<ShareDuration>("1d"),
     [shareUrl, setShareUrl] = useState("")
   const fileInput = useRef<HTMLInputElement>(null)
@@ -495,9 +499,11 @@ export function DashboardClient({
                         setShareUrl("")
                       }}
                       className="rounded p-2 hover:bg-muted"
+                      aria-label={`Share ${file.name}`}
                     >
                       <Share2 className="size-4" />
                     </button>
+                    <button onClick={() => setPreviewing(file)} className="rounded p-2 hover:bg-muted" aria-label={`Preview ${file.name}`}><Eye className="size-4" /></button>
                     <button
                       onClick={() => setRename({ kind: "file", item: file })}
                       className="rounded p-2 hover:bg-muted"
@@ -552,6 +558,9 @@ export function DashboardClient({
             </DialogFooter>
           </form>
         </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(previewing)} onOpenChange={(open) => !open && setPreviewing(null)}>
+        {previewing && <DialogContent className="max-w-4xl p-0"><DialogHeader className="border-b px-6 py-5"><DialogTitle className="truncate text-lg font-semibold">{previewing.name}</DialogTitle><DialogDescription className="text-sm text-muted-foreground">Native browser preview · {size(previewing.size)}</DialogDescription></DialogHeader><div className="min-h-96 bg-muted/30 p-4">{previewKind(previewing.name, previewing.mimeType) === "image" ? <img src={`/api/files/${previewing.id}/content`} alt={previewing.name} className="mx-auto max-h-[65vh] max-w-full rounded-md object-contain" /> : previewKind(previewing.name, previewing.mimeType) === "audio" ? <audio controls className="mt-24 w-full" src={`/api/files/${previewing.id}/content`} /> : previewKind(previewing.name, previewing.mimeType) === "video" ? <video controls className="mx-auto max-h-[65vh] max-w-full rounded-md" src={`/api/files/${previewing.id}/content`} /> : <iframe title={`Preview of ${previewing.name}`} src={`/api/files/${previewing.id}/content`} sandbox="" className="h-[65vh] w-full rounded-md border bg-background" />}</div><DialogFooter className="m-0 border-t px-6 py-4"><a href={`/api/files/${previewing.id}/download`} className="mr-auto text-sm text-primary hover:underline">Download original</a><DialogClose className="h-9 rounded-md border px-4 text-sm hover:bg-muted">Close</DialogClose></DialogFooter></DialogContent>}
       </Dialog>
       <Dialog
         open={Boolean(rename)}
